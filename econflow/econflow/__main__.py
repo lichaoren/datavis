@@ -6,12 +6,14 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from . import dts, export, store
-from .sectors import classify
+from .sectors import FALLBACK, rule_sector
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / "data" / "econflow.db"
 JSON = ROOT / "data" / "flows.json"
-DEFAULT_START = "2022-01-01"
+# DTS itemizes tax deposits by type from 2023-02-14; before that they are one
+# lump ("Cash FTD's Received") that cannot be split between HH and FIRM.
+DEFAULT_START = "2023-02-14"
 
 
 def cmd_update(a):
@@ -37,10 +39,10 @@ def cmd_unmapped(a):
     db = store.connect(a.db)
     tot = {}
     for d, label, amt in db.execute("SELECT direction, label, amt FROM flow"):
-        if classify(d, label) == "OTHER":
+        if rule_sector(d, label) == "":
             tot[(d, label)] = tot.get((d, label), 0.0) + amt
     for (d, label), amt in sorted(tot.items(), key=lambda kv: -kv[1]):
-        print(f"{d:3} {amt / 1e3:12,.1f} bn  {label}")
+        print(f"{d:3} -> {FALLBACK[d]:5} {amt / 1e3:12,.1f} bn  {label}")
 
 
 def cmd_serve(a):
@@ -58,7 +60,7 @@ def main():
     u.add_argument("--since", help=f"re-fetch from this date (default: day after last stored, or {DEFAULT_START})")
     u.set_defaults(fn=cmd_update)
     sub.add_parser("export", help="re-apply sector mapping, write flows.json").set_defaults(fn=cmd_export)
-    sub.add_parser("unmapped", help="list line items still classified OTHER").set_defaults(fn=cmd_unmapped)
+    sub.add_parser("unmapped", help="list line items no rule matches (shown with fallback sector)").set_defaults(fn=cmd_unmapped)
     s = sub.add_parser("serve", help="serve the web view")
     s.add_argument("--port", type=int, default=8000)
     s.set_defaults(fn=cmd_serve)

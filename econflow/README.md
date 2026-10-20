@@ -10,9 +10,9 @@
 
 ```bash
 cd econflow
-python -m econflow update      # 首次从 2022-01-01 回填；之后只抓新日期，然后导出 data/flows.json
+python -m econflow update      # 首次从 2023-02-14 回填；之后只抓新日期，然后导出 data/flows.json
 python -m econflow serve       # 打开 http://localhost:8000/web/
-python -m econflow unmapped    # 列出仍归为 OTHER 的科目（按金额排序），用于完善映射
+python -m econflow unmapped    # 列出没有规则匹配、走默认归类的科目（按金额排序）
 python -m econflow export      # 修改 sectors.py 后重新归类，无需重新抓取
 python -m unittest discover -s tests
 ```
@@ -45,9 +45,14 @@ python -m unittest discover -s tests
 | FIN 金融/债券持有人 | 国债发行/赎回、国债利息（含海外持有人，DTS 无法拆分） |
 | FED 美联储 | 美联储利润上缴 |
 | ROW 海外 | 国务院、对外援助、IMF |
-| OTHER | 未匹配，用 `unmapped` 查看 |
+| OTHER | Unclassified 及未匹配的存款 |
 
 归类是启发式的 SFC 口径（如 Medicare 视为对家庭的实物转移），不是收款方字面意义。
+没有规则匹配的**支出**默认归 FIRM（各部门日常运营 ≈ 政府采购，对应四部门 SFC 中的 G→F），没有匹配的**存款**归 OTHER；`unmapped` 可查看。
+
+起始日 2023-02-14：此前 DTS 的税收只有一行合计（Cash FTD's Received），无法拆分家庭 / 企业。
+
+守恒校验（2023-02 至 2026-10 实测）：每日 Σ存款 − Σ支出 与 TGA 余额变化之差 ≤ $11M（DTS 以百万美元取整）。
 
 ## 文件
 

@@ -22,6 +22,7 @@ FLOWS = [
     row("2026-01-02", "Withdrawals", "Public Debt Cash Redemp. (Table IIIB)", 900, 4),
     row("2026-01-02", "Withdrawals", "Interest on Treasury Securities", 30, 5),
     row("2026-01-02", "Withdrawals", "Some Agency", "null", 6),
+    row("2026-01-02", "Withdrawals", "null", 1250, 7),  # unlabeled daily total
 ]
 BAL = [
     {"record_date": "2026-01-01", "account_type": "Treasury General Account (TGA) Closing Balance",
@@ -30,6 +31,11 @@ BAL = [
      "open_today_bal": "800100", "close_today_bal": "null"},
     {"record_date": "2026-01-02", "account_type": "Treasury General Account (TGA) Opening Balance",
      "open_today_bal": "800000"},
+    # pre-2022-04 format
+    {"record_date": "2022-03-01", "account_type": "Treasury General Account (TGA)",
+     "open_today_bal": "771264", "close_today_bal": "699674"},
+    {"record_date": "2022-03-01", "account_type": "Supplementary Financing Program Account",
+     "open_today_bal": "0", "close_today_bal": "0"},
 ]
 
 
@@ -51,6 +57,13 @@ class Pipeline(unittest.TestCase):
             ("out", "Interest on Treasury Securities"): "FIN",
             ("out", "Dept of State (DOS)"): "ROW",
             ("out", "Sub-Total Withdrawals"): None,
+            ("out", "HHS - Federal Supple Med Insr Trust Fund"): "HH",
+            ("out", "HHS - Temp Assistance for Needy Families"): "SL",
+            ("out", "IAP - Agency for Int'l Development (AID)"): "ROW",
+            ("out", "Unclassified"): "OTHER",
+            ("out", "HHS - National Institutes of Health"): "FIRM",  # fallback
+            ("in", "Postal Service"): "OTHER",  # fallback
+            ("in", "Transfers from TGA (Table V)"): None,
         }
         for (d, label), want in cases.items():
             self.assertEqual(classify(d, label), want, label)
@@ -74,6 +87,7 @@ class Pipeline(unittest.TestCase):
         net = sum(a if cats[i]["dir"] == "in" else -a for i, a in out["flows"][0])
         self.assertEqual(net, 1350 - 1250)
         self.assertEqual(out["tga"], [800100.0])
+        self.assertEqual(dict(db.execute("SELECT * FROM tga"))["2022-03-01"], 699674.0)
         self.assertEqual(net, 800100 - 800000)
 
     def test_upsert_idempotent(self):

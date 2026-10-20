@@ -68,12 +68,12 @@ def parse_flow_rows(rows):
             continue
         catg = (r.get("transaction_catg") or "").strip()
         desc = (r.get("transaction_catg_desc") or "").strip()
-        if catg in ("", "null"):
+        catg = "" if catg == "null" else catg
+        desc = "" if desc == "null" else desc
+        if not catg:
             catg, desc = desc, ""
-        if desc == "null":
-            desc = ""
         label = f"{catg} — {desc}" if desc else catg
-        if not label:
+        if not label:  # unlabeled row = daily total
             continue
         key = (r["record_date"], d)
         line = r.get("src_line_nbr")
@@ -84,13 +84,19 @@ def parse_flow_rows(rows):
 
 
 def parse_balance_rows(rows):
-    """Raw API rows -> (date, TGA closing balance)."""
+    """Raw API rows -> (date, TGA closing balance).
+
+    Since 2022-04-18: row 'Treasury General Account (TGA) Closing Balance', value
+    in open_today_bal. Before: row 'Treasury General Account (TGA)', close_today_bal.
+    """
     for r in rows:
-        if "closing balance" not in (r.get("account_type") or "").lower():
+        at = (r.get("account_type") or "").strip().lower()
+        if "closing balance" in at:
+            v = num(r.get("close_today_bal"))
+            v = num(r.get("open_today_bal")) if v is None else v
+        elif at == "treasury general account (tga)":
+            v = num(r.get("close_today_bal"))
+        else:
             continue
-        # Field name differs across DTS format versions.
-        for f in ("close_today_bal", "open_today_bal"):
-            v = num(r.get(f))
-            if v is not None:
-                yield r["record_date"], v
-                break
+        if v is not None:
+            yield r["record_date"], v
