@@ -1,0 +1,9 @@
+[project]
+name = "econflow"
+version = "0.1.0"
+description = "Daily sector money-flow tracker (US Treasury Daily Treasury Statement)"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools]
+packages = ["econflow"]

@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sector Money Flows</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+  --accent: #2a78d6; --wash: rgba(11,11,11,0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+    --accent: #3987e5; --wash: rgba(255,255,255,0.06);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19;
+  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+  --accent: #3987e5; --wash: rgba(255,255,255,0.06);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 2px; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.sub { color: var(--ink-2); font-size: 12px; }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 16px; margin-top: 14px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+.seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: none; color: var(--ink-2); padding: 6px 10px; font: inherit; cursor: pointer; }
+.seg button:hover { background: var(--wash); }
+.seg button[aria-pressed="true"] { color: var(--ink); font-weight: 600; background: var(--wash); }
+input[type=date], select { font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--ring); border-radius: 8px; padding: 5px 8px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 14px; }
+.kpi { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 12px; }
+.kpi .l { color: var(--ink-2); font-size: 12px; }
+.kpi .v { font-size: 22px; font-weight: 600; margin-top: 2px; }
+.kpi .n { color: var(--muted); font-size: 11px; }
+.grid2 { display: grid; grid-template-columns: 1fr; gap: 0 14px; }
+@media (min-width: 900px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+svg text { fill: var(--ink); font-size: 12px; }
+svg .muted { fill: var(--muted); font-size: 11px; }
+.axis path, .axis line { stroke: var(--axis); }
+.axis text { fill: var(--muted); font-size: 11px; }
+.gridline line { stroke: var(--grid); }
+.gridline path { display: none; }
+.link { fill: none; stroke-opacity: 0.4; }
+.link:hover, .link.hi { stroke-opacity: 0.75; }
+.node rect { cursor: pointer; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+th { color: var(--ink-2); font-weight: 500; font-size: 12px; }
+th:first-child, td:first-child { text-align: left; }
+td.wrap { white-space: normal; }
+tr.sum td { font-weight: 600; border-bottom: 0; }
+.chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--ink-2); font-size: 12px; margin-bottom: 6px; }
+.scroll { max-height: 420px; overflow: auto; }
+.xscroll { overflow-x: auto; }
+.card { min-width: 0; }
+.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); display: none; max-width: 320px; z-index: 10; }
+.tip b { font-variant-numeric: tabular-nums; }
+.pill { font-size: 12px; color: var(--ink-2); }
+.pill button { font: inherit; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0 4px; }
+#err { color: #d03b3b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>部门资金流向 · 美国联邦政府现金账户</h1>
+  <div class="sub" id="meta">加载中…</div>
+  <div id="err"></div>
+
+  <div class="filters">
+    <div class="seg" id="presets"></div>
+    <input type="date" id="from" aria-label="开始日期"> – <input type="date" id="to" aria-label="结束日期">
+    <select id="debt" aria-label="国债口径">
+      <option value="net">国债：净发行</option>
+      <option value="gross">国债：总额（含滚动）</option>
+      <option value="exclude">国债：剔除</option>
+    </select>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="card">
+    <h2>钱从哪来 → 政府 → 钱去哪了</h2>
+    <div class="sub" style="margin-bottom:8px">左：各部门付给联邦政府（税、国债认购…）；右：联邦政府付给各部门（福利、采购、利息…）。点击节点筛选下方明细。</div>
+    <div id="sankey"></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>各部门净头寸（窗口合计）</h2>
+      <div class="sub" style="margin-bottom:8px">净注入 = 从政府收到 − 付给政府。Σ净注入 + ΔTGA ≡ 0。</div>
+      <div class="xscroll"><table id="sectorTbl"></table></div>
+    </div>
+    <div class="card">
+      <h2>每日净注入（按部门）</h2>
+      <div class="legend" id="legend"></div>
+      <div id="daily"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>明细科目 <span class="pill" id="catFilter"></span></h2>
+    <div class="scroll"><table id="catTbl"></table></div>
+  </div>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const tip = $("#tip");
+const dark = () => document.documentElement.dataset.theme === "dark" ||
+  (document.documentElement.dataset.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+const fmt = m => {                       // m in USD millions
+  if (m == null || isNaN(m)) return "—";
+  const a = Math.abs(m), s = m <= -0.5 ? "−" : "";
+  if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(2) + "T";
+  if (a >= 1e3) return s + "$" + (a / 1e3).toFixed(1) + "B";
+  return s + "$" + a.toFixed(0) + "M";
+};
+const showTip = (e, html) => { tip.innerHTML = html; tip.style.display = "block";
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+  const y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + "px"; tip.style.top = y + "px"; };
+const hideTip = () => tip.style.display = "none";
+
+let D, S, color, state = { preset: "1M", sector: null };
+
+fetch("../data/flows.json").then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(init).catch(e => { $("#meta").textContent = "";
+    $("#err").textContent = "未找到 data/flows.json —— 先运行 python -m econflow update（" + e.message + "）"; });
+
+function init(data) {
+  D = data;
+  S = Object.fromEntries(D.sectors.map((s, i) => [s.id, { ...s, i }]));
+  color = id => dark() ? S[id].colorDark : S[id].color;
+  const first = D.dates[0], last = D.dates.at(-1);
+  $("#meta").textContent = `${D.source} · 单位 ${D.unit} · 数据 ${first} → ${last} · 生成 ${D.generated}`;
+  for (const el of [$("#from"), $("#to")]) { el.min = first; el.max = last; }
+  const presets = [["1D","最新1天"],["5D","5天"],["1M","1月"],["3M","3月"],["MTD","月初至今"],
+                   ["YTD","年初至今"],["1Y","1年"],["ALL","全部"]];
+  $("#presets").innerHTML = presets.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join("");
+  $("#presets").onclick = e => { const k = e.target.dataset.k; if (k) { state.preset = k; applyPreset(); } };
+  $("#from").onchange = $("#to").onchange = () => { state.preset = null; render(); };
+  $("#debt").onchange = render;
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  addEventListener("resize", () => { clearTimeout(init.t); init.t = setTimeout(render, 150); });
+  applyPreset();
+}
+
+function applyPreset() {
+  const last = D.dates.at(-1), d = new Date(last + "T00:00:00Z");
+  const iso = x => x.toISOString().slice(0, 10);
+  const back = (days) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() - days + 1); return iso(x); };
+  const nthLast = n => D.dates[Math.max(0, D.dates.length - n)];
+  const from = {
+    "1D": last, "5D": nthLast(5), "1M": back(30), "3M": back(91),
+    "MTD": last.slice(0, 8) + "01", "YTD": last.slice(0, 5) + "01-01", "1Y": back(365), "ALL": D.dates[0],
+  }[state.preset];
+  $("#from").value = from < D.dates[0] ? D.dates[0] : from;
+  $("#to").value = last;
+  render();
+}
+
+// Index range [i0, i1] of trading days within [from, to].
+function windowIdx() {
+  let f = $("#from").value, t = $("#to").value;
+  if (f > t) [f, t] = [t, f];
+  const i0 = d3.bisectLeft(D.dates, f), i1 = d3.bisectRight(D.dates, t) - 1;
+  return [i0, i1];
+}
+
+// Sum line items over [i0, i1]; apply debt mode. -> [{cat, name, dir, sector, amt}]
+function aggregate(i0, i1, mode) {
+  const tot = new Float64Array(D.categories.length);
+  for (let i = i0; i <= i1; i++) for (const [c, a] of D.flows[i]) tot[c] += a;
+  let rows = [], debtNet = 0;
+  D.categories.forEach((c, i) => {
+    if (!tot[i]) return;
+    if (c.debt && mode !== "gross") { debtNet += c.dir === "in" ? tot[i] : -tot[i]; return; }
+    rows.push({ name: c.name, dir: c.dir, sector: c.sector, amt: tot[i] });
+  });
+  if (mode === "net" && debtNet)
+    rows.push({ name: debtNet > 0 ? "国债净发行（发行 − 赎回）" : "国债净赎回（赎回 − 发行）",
+                dir: debtNet > 0 ? "in" : "out", sector: "FIN", amt: Math.abs(debtNet) });
+  return rows;
+}
+
+function render() {
+  if (!D) return;
+  const [i0, i1] = windowIdx(), mode = $("#debt").value;
+  document.querySelectorAll("#presets button").forEach(b => b.setAttribute("aria-pressed", b.dataset.k === state.preset));
+  if (i1 < i0) { $("#kpis").innerHTML = `<div class="kpi">所选窗口没有数据</div>`; return; }
+  const rows = aggregate(i0, i1, mode);
+  const gross = aggregate(i0, i1, "gross");
+  const sum = (rs, dir) => d3.sum(rs.filter(r => r.dir === dir), r => r.amt);
+  const tin = sum(rows, "in"), tout = sum(rows, "out");
+  // Reported ΔTGA vs gross flows: residual exposes mis-classified / excluded lines.
+  const t1 = D.tga[i1], t0 = i0 > 0 ? D.tga[i0 - 1] : null;
+  const dTga = t1 != null && t0 != null ? t1 - t0 : null;
+  const flowNet = sum(gross, "in") - sum(gross, "out");
+  const days = i1 - i0 + 1;
+  $("#kpis").innerHTML = [
+    ["流入政府", fmt(tin), `${D.dates[i0]} → ${D.dates[i1]} · ${days} 个工作日`],
+    ["政府流出", fmt(tout), "福利 / 采购 / 利息 / 转移…"],
+    ["政府净流入（= 流量推算 ΔTGA）", fmt(flowNet), "正 = 从私人部门抽走现金"],
+    ["报表 ΔTGA", fmt(dTga), "TGA 期末 − 窗口前一日期末"],
+    ["守恒残差", dTga == null ? "—" : fmt(flowNet - dTga), "≈0 说明科目完整"],
+  ].map(([l, v, n]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="n">${n}</div></div>`).join("");
+  drawSankey(rows, tin, tout);
+  drawSectorTable(rows, tin - tout);
+  drawDaily(i0, i1, mode);
+  drawCats(rows);
+}
+
+function drawSankey(rows, tin, tout) {
+  const el = $("#sankey"); el.innerHTML = "";
+  const W = el.clientWidth, H = Math.max(360, Math.min(560, W * 0.55));
+  const bySec = dir => d3.rollup(rows.filter(r => r.dir === dir), v => d3.sum(v, r => r.amt), r => r.sector);
+  const inS = bySec("in"), outS = bySec("out");
+  const nodes = [{ id: "G", name: "联邦政府 (TGA)", order: 0 }], links = [];
+  for (const [s, v] of inS) if (v > 0) { nodes.push({ id: "in:" + s, sec: s, name: S[s].name, order: S[s].i }); links.push({ source: "in:" + s, target: "G", value: v, sec: s }); }
+  for (const [s, v] of outS) if (v > 0) { nodes.push({ id: "out:" + s, sec: s, name: S[s].name, order: S[s].i }); links.push({ source: "G", target: "out:" + s, value: v, sec: s }); }
+  const bal = tin - tout;
+  if (Math.abs(bal) > 0.5) {
+    const id = bal > 0 ? "tga+" : "tga-";
+    nodes.push({ id, name: bal > 0 ? "TGA 现金增加" : "TGA 现金减少", order: 99, tga: true });
+    links.push(bal > 0 ? { source: "G", target: id, value: bal, tga: true } : { source: id, target: "G", value: -bal, tga: true });
+  }
+  if (!links.length) { el.textContent = "无流量"; return; }
+  const sk = d3.sankey().nodeId(d => d.id).nodeWidth(12).nodePadding(14)
+    .nodeSort((a, b) => a.order - b.order).extent([[1, 6], [W - 1, H - 6]]);
+  const g = sk({ nodes: nodes.map(d => ({ ...d })), links: links.map(d => ({ ...d })) });
+  const svg = d3.select(el).append("svg").attr("width", W).attr("height", H).attr("role", "img")
+    .attr("aria-label", "部门与联邦政府之间的资金流桑基图");
+  const nodeColor = d => d.tga ? "var(--muted)" : d.id === "G" ? "var(--ink-2)" : color(d.sec);
+  const linkColor = d => d.tga ? "var(--muted)" : color(d.sec);
+  svg.append("g").selectAll("path").data(g.links).join("path").attr("class", "link")
+    .attr("d", d3.sankeyLinkHorizontal()).attr("stroke", linkColor)
+    .attr("stroke-width", d => Math.max(1, d.width))
+    .on("mousemove", (e, d) => showTip(e, `${d.source.name} → ${d.target.name}<br><b>${fmt(d.value)}</b>`
+      + ` · 占${d.source.id === "G" ? "流出" : "流入"} ${(d.value / (d.source.id === "G" ? tout : tin) * 100).toFixed(1)}%`))
+    .on("mouseleave", hideTip);
+  const n = svg.append("g").selectAll("g").data(g.nodes).join("g").attr("class", "node");
+  n.append("rect").attr("x", d => d.x0).attr("y", d => d.y0).attr("width", d => d.x1 - d.x0)
+    .attr("height", d => Math.max(1, d.y1 - d.y0)).attr("rx", 3).attr("fill", nodeColor)
+    .on("mousemove", (e, d) => showTip(e, `${d.name}<br><b>${fmt(d.value)}</b>`)).on("mouseleave", hideTip)
+    .on("click", (e, d) => { state.sector = d.sec && state.sector !== d.sec ? d.sec : null; render(); });
+  n.append("text").attr("x", d => d.x0 < W / 2 ? d.x1 + 6 : d.x0 - 6).attr("y", d => (d.y0 + d.y1) / 2)
+    .attr("dy", "-0.2em").attr("text-anchor", d => d.x0 < W / 2 ? "start" : "end")
+    .text(d => d.name).filter(d => d.y1 - d.y0 < 14 && d.id !== "G").attr("dy", "0.35em");
+  n.filter(d => d.y1 - d.y0 >= 14 || d.id === "G").append("text")
+    .attr("class", "muted").attr("x", d => d.x0 < W / 2 ? d.x1 + 6 : d.x0 - 6).attr("y", d => (d.y0 + d.y1) / 2)
+    .attr("dy", "1.05em").attr("text-anchor", d => d.x0 < W / 2 ? "start" : "end").text(d => fmt(d.value));
+}
+
+function drawSectorTable(rows, gNet) {
+  let html = `<tr><th>部门</th><th>付给政府</th><th>从政府收到</th><th>净注入</th></tr>`;
+  let tot = 0;
+  for (const s of D.sectors) {
+    const p = d3.sum(rows.filter(r => r.sector === s.id && r.dir === "in"), r => r.amt);
+    const r = d3.sum(rows.filter(r => r.sector === s.id && r.dir === "out"), r => r.amt);
+    if (!p && !r) continue;
+    tot += r - p;
+    html += `<tr><td><span class="chip" style="background:${color(s.id)}"></span>${s.name}</td>
+      <td>${fmt(p)}</td><td>${fmt(r)}</td><td>${fmt(r - p)}</td></tr>`;
+  }
+  html += `<tr><td>政府现金 ΔTGA（流量推算）</td><td></td><td></td><td>${fmt(gNet)}</td></tr>`;
+  html += `<tr class="sum"><td>合计</td><td></td><td></td><td>${fmt(tot + gNet)}</td></tr>`;
+  $("#sectorTbl").innerHTML = html;
+}
+
+function drawDaily(i0, i1, mode) {
+  const el = $("#daily"); el.innerHTML = "";
+  const n = i1 - i0 + 1;
+  // Bucket: daily ≤130 days, weekly ≤600, else monthly.
+  const key = n <= 130 ? d => d : n <= 600
+    ? d => { const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7)); return x.toISOString().slice(0, 10); }
+    : d => d.slice(0, 7) + "-01";
+  const unit = n <= 130 ? "日" : n <= 600 ? "周" : "月";
+  const secs = D.sectors.map(s => s.id);
+  const buckets = new Map();
+  for (let i = i0; i <= i1; i++) {
+    const k = key(D.dates[i]);
+    if (!buckets.has(k)) buckets.set(k, Object.fromEntries(secs.map(s => [s, 0])));
+    const b = buckets.get(k);
+    for (const [c, a] of D.flows[i]) {
+      const cat = D.categories[c];
+      if (cat.debt && mode === "exclude") continue;
+      b[cat.sector] += cat.dir === "out" ? a : -a;
+    }
+  }
+  const data = [...buckets].map(([k, v]) => ({ k, ...v }));
+  const used = secs.filter(s => data.some(d => d[s]));
+  $("#legend").innerHTML = used.map(s => `<span><span class="chip" style="background:${color(s)}"></span>${S[s].name}</span>`).join("")
+    + `<span style="color:var(--muted)">每${unit}汇总 · 正 = 政府向该部门净注入</span>`;
+  const W = el.clientWidth, H = 300, m = { t: 8, r: 8, b: 24, l: 52 };
+  const series = d3.stack().keys(used).offset(d3.stackOffsetDiverging)(data);
+  const x = d3.scaleBand().domain(data.map(d => d.k)).range([m.l, W - m.r]).paddingInner(data.length > 60 ? 0.1 : 0.25);
+  const ext = [d3.min(series, s => d3.min(s, d => d[0])), d3.max(series, s => d3.max(s, d => d[1]))];
+  const y = d3.scaleLinear().domain([Math.min(0, ext[0]), Math.max(0, ext[1])]).nice().range([H - m.b, m.t]);
+  const svg = d3.select(el).append("svg").attr("width", W).attr("height", H).attr("role", "img")
+    .attr("aria-label", "每期各部门净注入堆叠柱状图");
+  svg.append("g").attr("class", "gridline").attr("transform", `translate(${m.l},0)`)
+    .call(d3.axisLeft(y).ticks(5).tickSize(-(W - m.l - m.r)).tickFormat(""));
+  svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`)
+    .call(d3.axisLeft(y).ticks(5).tickFormat(fmt));
+  const ticks = x.domain().filter((_, i, a) => i % Math.ceil(a.length / Math.max(2, Math.floor(W / 90))) === 0);
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`)
+    .call(d3.axisBottom(x).tickValues(ticks).tickFormat(d => d.slice(5)).tickSizeOuter(0));
+  svg.append("line").attr("x1", m.l).attr("x2", W - m.r).attr("y1", y(0)).attr("y2", y(0)).attr("stroke", "var(--axis)");
+  const gap = x.bandwidth() > 4 ? 1 : 0;   // surface gap between stacked segments
+  svg.append("g").selectAll("g").data(series).join("g").attr("fill", s => color(s.key))
+    .selectAll("rect").data(s => s.map(d => ({ d, key: s.key }))).join("rect")
+    .attr("x", o => x(o.d.data.k)).attr("width", x.bandwidth())
+    .attr("y", o => y(o.d[1]) + gap).attr("height", o => Math.max(0, y(o.d[0]) - y(o.d[1]) - 2 * gap))
+    .on("mousemove", (e, o) => showTip(e, `${o.d.data.k}（${unit}）<br>`
+      + used.map(s => `<span class="chip" style="background:${color(s)}"></span>${S[s].name}：<b>${fmt(o.d.data[s])}</b>`).join("<br>")))
+    .on("mouseleave", hideTip);
+}
+
+function drawCats(rows) {
+  const f = state.sector;
+  $("#catFilter").innerHTML = f ? `· 仅显示 ${S[f].name} <button id="clr">清除</button>` : "· 点击桑基图节点可筛选部门";
+  if (f) $("#clr").onclick = () => { state.sector = null; render(); };
+  const list = rows.filter(r => !f || r.sector === f).sort((a, b) => b.amt - a.amt);
+  const tot = { in: d3.sum(rows.filter(r => r.dir === "in"), r => r.amt), out: d3.sum(rows.filter(r => r.dir === "out"), r => r.amt) };
+  $("#catTbl").innerHTML = `<tr><th>科目</th><th>方向</th><th>部门</th><th>金额</th><th>占同向</th></tr>`
+    + list.map(r => `<tr><td class="wrap">${r.name}</td><td>${r.dir === "in" ? "→ 政府" : "政府 →"}</td>
+      <td><span class="chip" style="background:${color(r.sector)}"></span>${r.sector}</td>
+      <td>${fmt(r.amt)}</td><td>${(r.amt / tot[r.dir] * 100).toFixed(1)}%</td></tr>`).join("");
+}
+</script>
+</body>
+</html>
