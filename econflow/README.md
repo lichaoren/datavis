@@ -11,7 +11,7 @@
 ```bash
 cd econflow
 python -m econflow update      # 首次从 2023-02-14 回填；之后只抓新日期，然后导出 data/flows.json
-python -m econflow serve       # 打开 http://localhost:8000/web/
+python -m econflow serve       # 打开 http://localhost:8000/web/（动画回放：/web/animate.html）
 python -m econflow unmapped    # 列出没有规则匹配、走默认归类的科目（按金额排序）
 python -m econflow export      # 修改 sectors.py 后重新归类，无需重新抓取
 python -m unittest discover -s tests
@@ -31,6 +31,7 @@ python -m unittest discover -s tests
 - **每日净注入**：按部门堆叠（窗口 >130 天按周，>600 天按月汇总）
 - **明细科目**：点击桑基图节点按部门筛选
 - **国债口径**：净发行（默认）/ 总额（含短债滚动，体量极大）/ 剔除
+- **动画回放**（`web/animate.html`）：粒子流逐日重放各部门 ↔ 政府的资金流（粒子数 ∝ 金额），中心水位 = TGA 实际余额，侧栏为累计净注入（各项相加恒为 0）
 - **守恒校验**：流量推算 ΔTGA vs 报表 TGA 余额变化，残差 ≠ 0 说明有科目被漏掉或误排除
 
 ## 部门归类

@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<!--page-->
+<title>Treasury Cash Flow Replay</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one stage — sectors orbit the Treasury cash account; ledger panel at right; tape timeline below. */
+:root {
+  --bg: #f4f5f1; --panel: #fbfbf8; --ink: #121411; --ink-2: #4b5048; --muted: #858a80;
+  --line: #dde0d6; --vault: #33413a; --water: rgba(51, 65, 58, 0.16); --ring: rgba(18, 20, 17, 0.10);
+  --f-display: "Archivo", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1110; --panel: #171a18; --ink: #eef0ea; --ink-2: #c0c5ba; --muted: #868b80;
+    --line: #2a2e2a; --vault: #c9d3cb; --water: rgba(201, 211, 203, 0.14); --ring: rgba(255, 255, 255, 0.10);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1110; --panel: #171a18; --ink: #eef0ea; --ink-2: #c0c5ba; --muted: #868b80;
+  --line: #2a2e2a; --vault: #c9d3cb; --water: rgba(201, 211, 203, 0.14); --ring: rgba(255, 255, 255, 0.10);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body); }
+.wrap { max-width: 1280px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; }
+h1 { font: 700 22px/1.2 var(--f-display); margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+.src { color: var(--muted); font-size: 12px; }
+.src a { color: var(--ink-2); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 7px; overflow: hidden; background: var(--panel); }
+.seg button, .btn { border: 0; background: none; color: var(--ink-2); padding: 6px 10px; font: 500 13px var(--f-body); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--ring); }
+.seg button:hover, .btn:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { color: var(--bg); background: var(--ink); }
+.btn { border: 1px solid var(--ring); border-radius: 7px; background: var(--panel); min-width: 74px; }
+.btn.primary { background: var(--ink); color: var(--bg); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+select { font: 13px var(--f-body); color: var(--ink); background: var(--panel); border: 1px solid var(--ring); border-radius: 7px; padding: 5px 8px; }
+.label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.main { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 960px) { .main { grid-template-columns: minmax(0, 1fr) 360px; } }
+.stage { position: relative; background: var(--panel); border: 1px solid var(--ring); border-radius: 12px; min-width: 0; }
+.stage canvas { display: block; width: 100%; aspect-ratio: 4 / 3; max-width: 100%; }
+@media (max-width: 600px) { .stage canvas { aspect-ratio: 1 / 1; } .clock .d { font-size: 24px; } }
+.clock { padding: 14px 16px 0; pointer-events: none; }
+.clock .d { font: 700 30px/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.clock .w { color: var(--muted); font: 12px var(--f-data); margin-top: 4px; }
+.unit { position: absolute; bottom: 12px; left: 16px; color: var(--muted); font: 11px var(--f-data); pointer-events: none; }
+.side { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--ring); border-radius: 12px; padding: 14px; min-width: 0; }
+.card h2 { font: 700 14px var(--f-display); margin: 0 0 2px; }
+.card .note { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+.ledger { display: grid; gap: 7px; }
+.row { display: grid; grid-template-columns: 92px 1fr 78px; gap: 8px; align-items: center; font-size: 12px; }
+.row .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .v { text-align: right; font: 12px var(--f-data); font-variant-numeric: tabular-nums; }
+.bar { position: relative; height: 10px; }
+.bar::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line); }
+.bar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.row.sum { border-top: 1px solid var(--line); padding-top: 7px; font-weight: 600; }
+.chip { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
+.tick { display: grid; gap: 6px; font-size: 12px; }
+.tick div { display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: baseline; }
+.tick .dir { color: var(--muted); font: 11px var(--f-data); }
+.tick .amt { font: 12px var(--f-data); font-variant-numeric: tabular-nums; }
+.tick .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tape { background: var(--panel); border: 1px solid var(--ring); border-radius: 12px; padding: 12px 14px 8px; }
+.tape .top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+.tape canvas { display: block; width: 100%; height: 64px; cursor: pointer; }
+#scrub { width: 100%; margin: 6px 0 0; accent-color: var(--ink); }
+.tip { position: fixed; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--ring);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 5; max-width: 280px; }
+.tip b { font: 500 12px var(--f-data); }
+#err { color: #d03b3b; }
+</style>
+</head>
+<body>
+<!--/head-->
+<div class="wrap">
+  <header>
+    <div>
+      <h1>钱从哪来，流向哪里 · 美国联邦政府现金账户逐日回放</h1>
+      <div class="src" id="src">加载数据…</div>
+      <div class="src" id="static"><a href="index.html">按时间窗口查看明细 →</a></div>
+    </div>
+    <div class="controls">
+      <button class="btn primary" id="play" type="button">▶ 播放</button>
+      <div class="seg" id="speed" role="group" aria-label="播放速度"></div>
+      <div class="seg" id="win" role="group" aria-label="时间窗口"></div>
+      <select id="debt" aria-label="国债口径">
+        <option value="net">国债：每日净发行</option>
+        <option value="exclude">国债：剔除</option>
+        <option value="gross">国债：总额（含滚动）</option>
+      </select>
+    </div>
+  </header>
+  <div id="err"></div>
+
+  <div class="main">
+    <div class="stage">
+      <div class="clock"><div class="d" id="date">—</div><div class="w" id="wk"></div></div>
+      <canvas id="cv" aria-label="各部门与联邦政府之间资金流动的动画"></canvas>
+      <div class="unit" id="unit"></div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <h2>累计净注入</h2>
+        <div class="note" id="ledgerNote">从窗口起点到当日。正 = 政府向该部门净付款。</div>
+        <div class="ledger" id="ledger"></div>
+      </div>
+      <div class="card">
+        <h2>当日最大科目</h2>
+        <div class="note">按金额，单位：十亿美元</div>
+        <div class="tick" id="tick"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tape">
+    <div class="top"><span class="label">TGA 余额 · 点击或拖动跳转</span><span class="label" id="tapeVal"></span></div>
+    <canvas id="tl" aria-hidden="true"></canvas>
+    <input type="range" id="scrub" min="0" max="0" value="0" aria-label="回放日期">
+  </div>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const SEC_PER_DAY = 0.6;                     // seconds per trading day at 1×
+const TRAVEL = 1.3;                          // particle travel time, seconds
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const WEEK = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const fmt = m => {                           // USD millions -> text
+  if (m == null || isNaN(m)) return "—";
+  const a = Math.abs(m), s = m <= -0.5 ? "−" : m >= 0.5 ? "" : "";
+  if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(2) + "T";
+  if (a >= 1e3) return s + "$" + (a / 1e3).toFixed(a >= 1e5 ? 0 : 1) + "B";
+  return s + "$" + a.toFixed(0) + "M";
+};
+const sfmt = m => (m >= 0.5 ? "+" : "") + fmt(m);
+
+let D, N, K, SEC, theme = {};
+let st = { t: 0, start: 0, playing: false, speed: 1, win: "3M", mode: "net" };
+let dayIn, dayOut, cumIn, cumOut, dayFlow;   // [k][i]
+let particles = [], carry = {}, glow = {};
+
+const load = window.FLOWS ? Promise.resolve(window.FLOWS)
+  : fetch("../data/flows.json").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+load.then(init).catch(e => { $("#src").textContent = "";
+  $("#err").textContent = "没有找到 data/flows.json。先运行 python -m econflow update，再用 python -m econflow serve 打开本页。（" + e.message + "）"; });
+
+function isDark() {
+  const t = document.documentElement.dataset.theme;
+  return t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+}
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
+  theme = { ink: v("--ink"), ink2: v("--ink-2"), muted: v("--muted"), line: v("--line"), vault: v("--vault"),
+            water: v("--water"), panel: v("--panel"), dark: isDark(),
+            fd: v("--f-display"), fb: v("--f-body"), fm: v("--f-data") };
+  if (SEC) for (const s of SEC) s.c = theme.dark ? s.colorDark : s.color;
+}
+
+function init(data) {
+  D = data; N = D.dates.length;
+  SEC = D.sectors.map((s, k) => ({ ...s, k }));
+  K = SEC.length;
+  readTheme();
+  $("#src").innerHTML = `来源：<a href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank" rel="noopener">美国财政部 Daily Treasury Statement</a> · 数据 ${D.dates[0]} → ${D.dates[N - 1]} · 每个工作日更新`;
+  $("#speed").innerHTML = [0.5, 1, 2, 4, 8].map(x => `<button type="button" data-x="${x}">${x}×</button>`).join("");
+  $("#win").innerHTML = [["1M", "1月"], ["3M", "3月"], ["YTD", "年初至今"], ["1Y", "1年"], ["ALL", "全部"]]
+    .map(([k, l]) => `<button type="button" data-k="${k}">${l}</button>`).join("");
+  $("#speed").onclick = e => { const x = +e.target.dataset.x; if (x) { st.speed = x; carry = {}; syncUI(); } };
+  $("#win").onclick = e => { const k = e.target.dataset.k; if (k) { st.win = k; setWindow(); } };
+  $("#debt").onchange = e => { st.mode = e.target.value; build(); carry = {}; frameStatic(); };
+  $("#play").onclick = togglePlay;
+  const sc = $("#scrub"); sc.max = N - 1;
+  sc.oninput = () => seek(+sc.value);
+  addEventListener("keydown", e => {
+    if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
+    if (e.code === "Space") { e.preventDefault(); togglePlay(); }
+    if (e.code === "ArrowRight") seek(Math.min(N - 1, cur() + 1));
+    if (e.code === "ArrowLeft") seek(Math.max(st.start, cur() - 1));
+  });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { readTheme(); drawTape(); });
+  new MutationObserver(() => { readTheme(); drawTape(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  new ResizeObserver(() => { sizeCanvases(); frameStatic(); }).observe($(".stage"));
+  setupHover();
+  build();
+  setWindow();
+  if (!reduce) togglePlay();
+  requestAnimationFrame(loop);
+}
+
+// Per-day sector totals under the current debt mode, plus prefix sums for O(1) windows.
+function build() {
+  dayIn = SEC.map(() => new Float64Array(N)); dayOut = SEC.map(() => new Float64Array(N));
+  const fin = SEC.findIndex(s => s.id === "FIN"), idx = Object.fromEntries(SEC.map(s => [s.id, s.k]));
+  for (let i = 0; i < N; i++) {
+    let debt = 0;
+    for (const [c, a] of D.flows[i]) {
+      const cat = D.categories[c];
+      if (cat.debt && st.mode !== "gross") { debt += cat.dir === "in" ? a : -a; continue; }
+      (cat.dir === "in" ? dayIn : dayOut)[idx[cat.sector]][i] += a;
+    }
+    if (st.mode === "net") { if (debt > 0) dayIn[fin][i] += debt; else dayOut[fin][i] -= debt; }
+  }
+  const pre = arr => arr.map(a => { const p = new Float64Array(N + 1); for (let i = 0; i < N; i++) p[i + 1] = p[i] + a[i]; return p; });
+  cumIn = pre(dayIn); cumOut = pre(dayOut);
+  let mx = 0;
+  for (let k = 0; k < K; k++) for (let i = 0; i < N; i++) mx = Math.max(mx, dayIn[k][i], dayOut[k][i]);
+  dayFlow = mx;
+}
+
+function setWindow() {
+  const last = D.dates[N - 1], d = new Date(last + "T00:00:00Z");
+  const back = n => { const x = new Date(d); x.setUTCDate(x.getUTCDate() - n + 1); return x.toISOString().slice(0, 10); };
+  const from = { "1M": back(30), "3M": back(91), "YTD": last.slice(0, 5) + "01-01", "1Y": back(365), "ALL": D.dates[0] }[st.win];
+  st.start = Math.max(0, lowerBound(from));
+  seek(st.start);
+  syncUI();
+}
+const lowerBound = x => { let lo = 0, hi = N; while (lo < hi) { const m = (lo + hi) >> 1; if (D.dates[m] < x) lo = m + 1; else hi = m; } return lo; };
+const cur = () => Math.min(N - 1, Math.floor(st.t));
+
+function seek(i) {
+  if (i < st.start) { st.start = i; st.win = null; }
+  st.t = i; carry = {};
+  if (i >= N - 1 && st.playing) togglePlay();
+  frameStatic(); syncUI();
+}
+function togglePlay() {
+  if (!D) return;
+  if (!st.playing && cur() >= N - 1) seek(st.start);    // replay from window start
+  st.playing = !st.playing; syncUI();
+}
+function syncUI() {
+  $("#play").textContent = st.playing ? "❚❚ 暂停" : (cur() >= N - 1 ? "↺ 重播" : "▶ 播放");
+  document.querySelectorAll("#speed button").forEach(b => b.setAttribute("aria-pressed", +b.dataset.x === st.speed));
+  document.querySelectorAll("#win button").forEach(b => b.setAttribute("aria-pressed", b.dataset.k === st.win));
+  $("#unit").textContent = reduce ? "已开启“减少动态效果”：只显示流量线宽" : `每颗粒子 ≈ ${fmt(unit())}`;
+}
+// Particle denomination scales with speed so on-screen density stays constant.
+const unit = () => (st.mode === "gross" ? 4000 : 500) * Math.max(1, st.speed);
+
+/* ---------- geometry ---------- */
+const cv = $("#cv"), ctx = cv.getContext("2d"), tl = $("#tl"), tctx = tl.getContext("2d");
+let W = 0, H = 0, C = { x: 0, y: 0, r: 50 }, P = [], narrow = false;
+function sizeCanvases() {
+  const dpr = devicePixelRatio || 1;
+  for (const [c, x] of [[cv, ctx], [tl, tctx]]) {
+    const r = c.getBoundingClientRect();
+    c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  const r = cv.getBoundingClientRect(); W = r.width; H = r.height;
+  // Narrow: labels sit under/over nodes, so the orbit can use the full width.
+  narrow = W < 600;
+  const Rx = narrow ? W / 2 - 44 : Math.min(W / 2 - 90, H * 0.42);
+  const Ry = narrow ? H / 2 - 70 : H * 0.36;
+  C = { x: W / 2, y: H / 2, r: Math.max(36, Math.min(Rx, Ry) * 0.25) };
+  P = SEC ? SEC.map((s, k) => {
+    const a = -Math.PI / 2 + (k / K) * Math.PI * 2;
+    return { x: C.x + Math.cos(a) * Rx, y: C.y + Math.sin(a) * Ry, a };
+  }) : [];
+  drawTape();
+}
+
+// Quadratic path between a sector and the centre; lane offset keeps in/out apart.
+function path(k, dir) {
+  const p = P[k], from = dir === "in" ? p : C, to = dir === "in" ? C : p;
+  const dx = to.x - from.x, dy = to.y - from.y, L = Math.hypot(dx, dy) || 1;
+  const nx = -dy / L, ny = dx / L, off = Math.min(26, L * 0.12);
+  const sR = dir === "in" ? nodeR(k) : C.r, eR = dir === "in" ? C.r : nodeR(k);
+  return { x0: from.x + dx / L * sR + nx * 5, y0: from.y + dy / L * sR + ny * 5,
+           cx: (from.x + to.x) / 2 + nx * off, cy: (from.y + to.y) / 2 + ny * off,
+           x1: to.x - dx / L * eR + nx * 5, y1: to.y - dy / L * eR + ny * 5 };
+}
+function nodeR(k) {
+  const i = cur(), s = st.start;
+  const tot = cumIn[k][i + 1] - cumIn[k][s] + cumOut[k][i + 1] - cumOut[k][s];
+  let mx = 1; for (let j = 0; j < K; j++) mx = Math.max(mx, cumIn[j][i + 1] - cumIn[j][s] + cumOut[j][i + 1] - cumOut[j][s]);
+  return 12 + 22 * Math.sqrt(tot / mx);
+}
+
+/* ---------- animation ---------- */
+let lastT = performance.now(), lastDay = -1;
+function loop(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  if (D && W) {
+    if (st.playing) {
+      const prev = cur();
+      st.t = Math.min(N - 1 + 0.999, st.t + dt * st.speed / SEC_PER_DAY);
+      if (!reduce) emit(dt);
+      if (st.t >= N - 1 + 0.99) { st.playing = false; syncUI(); }
+      if (cur() !== prev) $("#scrub").value = cur();
+    }
+    step(dt);
+    draw();
+    if (cur() !== lastDay) { lastDay = cur(); panels(); drawTape(); }
+  }
+  requestAnimationFrame(loop);
+}
+function emit(dt) {
+  const i = cur(), u = unit(), daySec = SEC_PER_DAY / st.speed;
+  for (let k = 0; k < K; k++) for (const dir of ["in", "out"]) {
+    const a = (dir === "in" ? dayIn : dayOut)[k][i];
+    if (!a) continue;
+    const key = dir + k;
+    carry[key] = (carry[key] || 0) + a / u * dt / daySec;
+    while (carry[key] >= 1 && particles.length < 5000) {
+      carry[key] -= 1;
+      particles.push({ k, dir, t: -Math.random() * 0.15, j: (Math.random() - 0.5) * 9 });
+    }
+    carry[key] = Math.min(carry[key], 3);
+  }
+}
+function step(dt) {
+  for (const p of particles) {
+    p.t += dt / TRAVEL;
+    if (p.t >= 1 && !p.done) { p.done = true; const g = p.dir === "in" ? "G" : p.k; glow[g] = Math.min(1, (glow[g] || 0) + 0.06); }
+  }
+  particles = particles.filter(p => p.t < 1);
+  for (const g in glow) glow[g] *= Math.pow(0.04, dt);
+}
+const frameStatic = () => { if (D && W) { draw(); panels(); drawTape(); $("#scrub").value = cur(); } };
+
+function draw() {
+  const i = cur();
+  ctx.clearRect(0, 0, W, H);
+  // Flow lanes: width ∝ sqrt(today's flow).
+  ctx.lineCap = "round";
+  for (let k = 0; k < K; k++) for (const dir of ["in", "out"]) {
+    const a = (dir === "in" ? dayIn : dayOut)[k][i];
+    if (a <= 0) continue;
+    const g = path(k, dir);
+    ctx.strokeStyle = SEC[k].c; ctx.globalAlpha = reduce ? 0.55 : 0.16;
+    ctx.lineWidth = 1 + 14 * Math.sqrt(a / dayFlow);
+    ctx.beginPath(); ctx.moveTo(g.x0, g.y0); ctx.quadraticCurveTo(g.cx, g.cy, g.x1, g.y1); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // Particles.
+  const cache = {};
+  for (const p of particles) {
+    if (p.t < 0) continue;
+    const g = cache[p.dir + p.k] || (cache[p.dir + p.k] = path(p.k, p.dir));
+    const t = p.t, u = 1 - t, e = Math.sin(Math.PI * t);
+    const x = u * u * g.x0 + 2 * u * t * g.cx + t * t * g.x1;
+    const y = u * u * g.y0 + 2 * u * t * g.cy + t * t * g.y1;
+    ctx.fillStyle = SEC[p.k].c; ctx.globalAlpha = 0.35 + 0.65 * Math.min(1, e * 2);
+    ctx.beginPath(); ctx.arc(x + p.j * e * 0.4, y + p.j * e * 0.4, 2.3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  drawVault(i);
+  for (let k = 0; k < K; k++) drawNode(k, i);
+}
+
+function drawVault(i) {
+  const tga = D.tga[i] ?? 0;
+  let mx = 1; for (const v of D.tga) if (v > mx) mx = v;
+  const lvl = Math.max(0.02, tga / mx), r = C.r;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(C.x, C.y, r, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = theme.panel; ctx.fillRect(C.x - r, C.y - r, 2 * r, 2 * r);
+  const top = C.y + r - 2 * r * lvl, wob = Math.sin(performance.now() / 600) * 2;
+  ctx.fillStyle = theme.water; ctx.beginPath(); ctx.moveTo(C.x - r, top);
+  ctx.quadraticCurveTo(C.x, top + wob, C.x + r, top); ctx.lineTo(C.x + r, C.y + r); ctx.lineTo(C.x - r, C.y + r); ctx.fill();
+  ctx.restore();
+  const g = glow.G || 0;
+  ctx.lineWidth = 2 + g * 3; ctx.strokeStyle = theme.vault;
+  ctx.beginPath(); ctx.arc(C.x, C.y, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = theme.ink; ctx.textAlign = "center";
+  ctx.font = `700 ${Math.round(r * 0.36)}px ${theme.fd}`;
+  ctx.fillText(fmt(tga), C.x, C.y + r * 0.08);
+  ctx.font = `11px ${theme.fb}`;
+  ctx.fillStyle = theme.ink2; ctx.fillText(r < 48 ? "TGA" : "联邦政府 TGA", C.x, C.y - r * 0.32);
+  ctx.fillStyle = theme.muted; ctx.fillText("现金余额", C.x, C.y + r * 0.42);
+}
+
+function drawNode(k, i) {
+  const p = P[k], s = SEC[k], r = nodeR(k), g = glow[k] || 0;
+  const net = (cumOut[k][i + 1] - cumOut[k][st.start]) - (cumIn[k][i + 1] - cumIn[k][st.start]);
+  ctx.fillStyle = theme.panel; ctx.strokeStyle = s.c; ctx.lineWidth = 2 + g * 3;
+  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.globalAlpha = 0.85; ctx.fillStyle = s.c;
+  ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.42, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+  // Label outside the node, away from centre.
+  const out = Math.cos(p.a), side = !narrow && Math.abs(out) > 0.3, below = Math.sin(p.a) > (narrow ? -0.5 : 0.2);
+  const lx = p.x + (side ? Math.sign(out) * (r + 8) : 0);
+  const ly = side ? p.y - 4 : below ? p.y + r + 14 : p.y - r - 22;
+  ctx.textAlign = side ? (out > 0 ? "left" : "right") : "center";
+  ctx.fillStyle = theme.ink; ctx.font = `600 12px ${theme.fb}`;
+  ctx.fillText(s.name.split(" ")[0], lx, ly);
+  ctx.fillStyle = theme.ink2; ctx.font = `11px ${theme.fm}`;
+  ctx.fillText("累计 " + sfmt(net), lx, ly + 14);
+}
+
+/* ---------- side panels ---------- */
+function panels() {
+  const i = cur(), s = st.start, d = D.dates[i];
+  $("#date").textContent = d;
+  $("#wk").textContent = `${WEEK[new Date(d + "T00:00:00Z").getUTCDay()]} · 窗口第 ${i - s + 1} 个工作日 / 共 ${N - s}`;
+  const rows = SEC.map(x => {
+    const pin = cumIn[x.k][i + 1] - cumIn[x.k][s], pout = cumOut[x.k][i + 1] - cumOut[x.k][s];
+    return { name: x.name.split(" ")[0], c: x.c, v: pout - pin, pin, pout };
+  }).filter(r => r.pin || r.pout);
+  const dTga = -d3sum(rows.map(r => r.v));
+  rows.push({ name: "TGA 现金", c: theme.vault, v: dTga, tga: true });
+  const mx = Math.max(1, ...rows.map(r => Math.abs(r.v)));
+  const rep = s > 0 && D.tga[i] != null && D.tga[s - 1] != null ? D.tga[i] - D.tga[s - 1] : null;
+  $("#ledger").innerHTML = rows.map(r => {
+    const w = Math.abs(r.v) / mx * 50, left = r.v >= 0 ? 50 : 50 - w;
+    const tip = r.tga ? `TGA 余额变化（流量推算）${rep != null ? "；报表 " + sfmt(rep) : ""}` : `付给政府 ${fmt(r.pin)}，从政府收到 ${fmt(r.pout)}`;
+    return `<div class="row" title="${tip}"><span class="n"><span class="chip" style="background:${r.c}"></span>${r.name}</span>
+      <span class="bar"><i style="left:${left}%;width:${w}%;background:${r.c}"></i></span><span class="v">${sfmt(r.v)}</span></div>`;
+  }).join("") + `<div class="row sum"><span class="n">合计</span><span></span><span class="v">${fmt(d3sum(rows.map(r => r.v)))}</span></div>`;
+  $("#ledgerNote").textContent = `${D.dates[s]} → ${d}。正 = 政府向该部门净付款。各项相加恒为 0。`;
+  // Today's biggest line items.
+  const items = D.flows[i].map(([c, a]) => ({ cat: D.categories[c], a }))
+    .filter(x => !(x.cat.debt && st.mode !== "gross")).sort((a, b) => b.a - a.a).slice(0, 6);
+  if (st.mode === "net") {
+    const net = d3sum(D.flows[i].filter(([c]) => D.categories[c].debt).map(([c, a]) => D.categories[c].dir === "in" ? a : -a));
+    if (net) items.push({ cat: { name: net > 0 ? "国债净发行" : "国债净赎回", dir: net > 0 ? "in" : "out", sector: "FIN" }, a: Math.abs(net) });
+    items.sort((a, b) => b.a - a.a); items.length = Math.min(items.length, 6);
+  }
+  const col = id => SEC.find(x => x.id === id).c;
+  $("#tick").innerHTML = items.map(x => `<div><span class="dir">${x.cat.dir === "in" ? "→ 政府" : "政府 →"}</span>
+    <span class="nm" title="${x.cat.name}"><span class="chip" style="background:${col(x.cat.sector)}"></span>${x.cat.name}</span>
+    <span class="amt">${(x.a / 1e3).toFixed(1)}</span></div>`).join("");
+  $("#tapeVal").textContent = `${d} · TGA ${fmt(D.tga[i])}`;
+}
+const d3sum = a => a.reduce((x, y) => x + y, 0);
+
+/* ---------- tape (TGA timeline) ---------- */
+function drawTape() {
+  if (!D) return;
+  const r = tl.getBoundingClientRect(), w = r.width, h = r.height;
+  tctx.clearRect(0, 0, w, h);
+  let mn = Infinity, mx = -Infinity; for (const v of D.tga) if (v != null) { mn = Math.min(mn, v); mx = Math.max(mx, v); }
+  const x = i => i / (N - 1) * w, y = v => h - 4 - (v - mn) / (mx - mn || 1) * (h - 10);
+  tctx.fillStyle = theme.water; tctx.fillRect(x(st.start), 0, x(cur()) - x(st.start) + 1, h);
+  tctx.beginPath(); D.tga.forEach((v, i) => v != null && (i ? tctx.lineTo(x(i), y(v)) : tctx.moveTo(x(i), y(v))));
+  tctx.strokeStyle = theme.vault; tctx.lineWidth = 1.5; tctx.stroke();
+  tctx.strokeStyle = theme.ink; tctx.lineWidth = 2;
+  tctx.beginPath(); tctx.moveTo(x(cur()), 0); tctx.lineTo(x(cur()), h); tctx.stroke();
+  tctx.fillStyle = theme.ink; tctx.beginPath(); tctx.arc(x(cur()), y(D.tga[cur()] ?? mn), 4, 0, Math.PI * 2); tctx.fill();
+}
+let dragging = false;
+const tapeSeek = e => { const r = tl.getBoundingClientRect(); seek(Math.max(0, Math.min(N - 1, Math.round((e.clientX - r.left) / r.width * (N - 1))))); };
+tl.addEventListener("pointerdown", e => { dragging = true; tl.setPointerCapture(e.pointerId); tapeSeek(e); });
+tl.addEventListener("pointermove", e => dragging && tapeSeek(e));
+tl.addEventListener("pointerup", () => dragging = false);
+
+/* ---------- hover ---------- */
+function setupHover() {
+  const tip = $("#tip");
+  cv.addEventListener("mousemove", e => {
+    const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, i = cur(), s = st.start;
+    let html = null;
+    if (Math.hypot(mx - C.x, my - C.y) < C.r) {
+      html = `联邦政府现金账户 (TGA)<br>${D.dates[i]} 余额 <b>${fmt(D.tga[i])}</b>`;
+    } else for (let k = 0; k < K; k++) if (Math.hypot(mx - P[k].x, my - P[k].y) < nodeR(k) + 6) {
+      html = `<span class="chip" style="background:${SEC[k].c}"></span>${SEC[k].name}<br>`
+        + `当日：付给政府 <b>${fmt(dayIn[k][i])}</b>，收到 <b>${fmt(dayOut[k][i])}</b><br>`
+        + `累计：付 <b>${fmt(cumIn[k][i + 1] - cumIn[k][s])}</b>，收 <b>${fmt(cumOut[k][i + 1] - cumOut[k][s])}</b>`;
+    }
+    tip.hidden = !html;
+    if (html) { tip.innerHTML = html; tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px";
+                tip.style.top = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8) + "px"; }
+  });
+  cv.addEventListener("mouseleave", () => tip.hidden = true);
+}
+</script>
+<!--/page-->
+</body>
+</html>
